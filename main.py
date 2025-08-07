@@ -56,13 +56,18 @@ def index():
         cursor.execute("SELECT * FROM loans ORDER BY created_at DESC")
         loans = cursor.fetchall()
         print("[DEBUG] Loan amounts in dashboard:", [loan['amount'] for loan in loans])
-        
+        print("[DEBUG] Loan amount types:", [type(loan['amount']) for loan in loans])
         # Calculate summary statistics
+        def safe_float(val):
+            try:
+                return float(val)
+            except Exception:
+                return 0.0
         total_loans = len(loans)
         paid_loans = len([loan for loan in loans if loan['status'] == 'Paid'])
         unpaid_loans = total_loans - paid_loans
-        total_amount = sum(float(loan['amount']) for loan in loans)
-        paid_amount = sum(float(loan['amount']) for loan in loans if loan['status'] == 'Paid')
+        total_amount = sum(safe_float(loan['amount']) for loan in loans)
+        paid_amount = sum(safe_float(loan['amount']) for loan in loans if loan['status'] == 'Paid')
         unpaid_amount = total_amount - paid_amount
         
         db.close()
