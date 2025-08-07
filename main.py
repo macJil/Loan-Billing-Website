@@ -7,7 +7,7 @@ app = Flask(__name__)
 app.secret_key = 'your-secret-key-here'
 
 # SQLite Configuration
-DATABASE = 'loan_billing.db'
+DATABASE = '/tmp/loan_billing.db'
 
 def get_db():
     db = sqlite3.connect(DATABASE)
@@ -267,5 +267,8 @@ def search_loans():
                              total_amount=0, paid_amount=0, unpaid_amount=0)
 
 if __name__ == '__main__':
-    init_db()
-    app.run(debug=True) 
+    app.run(debug=True)
+
+# Always initialize the database, even when run by Gunicorn
+with app.app_context():
+    init_db() 
