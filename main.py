@@ -1,56 +1,58 @@
 from flask import Flask, render_template, request, redirect, url_for, flash, session
-from flask_mysqldb import MySQL
-import MySQLdb.cursors
+import sqlite3
 from datetime import datetime
 import os
 
 app = Flask(__name__)
 app.secret_key = 'your-secret-key-here'
 
-# MySQL Configuration
-app.config['MYSQL_HOST'] = 'localhost'  # Change to your MySQL host
-app.config['MYSQL_USER'] = 'root'       # Change to your MySQL username
-app.config['MYSQL_PASSWORD'] = 'mac'       # Change to your MySQL password
-app.config['MYSQL_DB'] = 'loan_billing_db'  # Change to your database name
+# SQLite Configuration
+DATABASE = 'loan_billing.db'
 
-mysql = MySQL(app)
+def get_db():
+    db = sqlite3.connect(DATABASE)
+    db.row_factory = sqlite3.Row
+    return db
 
 # Initialize database tables
 def init_db():
-    cursor = mysql.connection.cursor()
+    db = get_db()
+    cursor = db.cursor()
     
     # Create loans table
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS loans (
-            id INT AUTO_INCREMENT PRIMARY KEY,
-            name VARCHAR(100) NOT NULL,
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
             description TEXT,
-            date DATE NOT NULL,
-            amount DECIMAL(10,2) NOT NULL,
-            status VARCHAR(10) DEFAULT 'Unpaid',
+            date TEXT NOT NULL,
+            amount REAL NOT NULL,
+            status TEXT DEFAULT 'Unpaid',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
     
     # Create users table for future authentication
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS users (
-            id INT AUTO_INCREMENT PRIMARY KEY,
-            username VARCHAR(50) UNIQUE NOT NULL,
-            password VARCHAR(255) NOT NULL,
-            email VARCHAR(100),
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT UNIQUE NOT NULL,
+            password TEXT NOT NULL,
+            email TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
     
-    mysql.connection.commit()
+    db.commit()
+    db.close()
 
 # Home page: list all loans
 @app.route('/')
 def index():
     try:
-        cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+        db = get_db()
+        cursor = db.cursor()
         cursor.execute("SELECT * FROM loans ORDER BY created_at DESC")
         loans = cursor.fetchall()
         
@@ -61,6 +63,8 @@ def index():
         total_amount = sum(float(loan['amount']) for loan in loans)
         paid_amount = sum(float(loan['amount']) for loan in loans if loan['status'] == 'Paid')
         unpaid_amount = total_amount - paid_amount
+        
+        db.close()
         
         return render_template('index.html', 
                              loans=loans, 
@@ -90,12 +94,14 @@ def add_loan():
             flash('Name and amount are required!', 'error')
             return redirect('/')
         
-        cursor = mysql.connection.cursor()
+        db = get_db()
+        cursor = db.cursor()
         cursor.execute("""
             INSERT INTO loans (name, description, date, amount, status) 
-            VALUES (%s, %s, %s, %s, %s)
+            VALUES (?, ?, ?, ?, ?)
         """, (name, description, date, amount, status))
-        mysql.connection.commit()
+        db.commit()
+        db.close()
         
         flash('Loan added successfully!', 'success')
         return redirect('/')
@@ -107,45 +113,60 @@ def add_loan():
 @app.route('/mark_paid/<int:id>')
 def mark_paid(id):
     try:
-        cursor = mysql.connection.cursor()
-        cursor.execute("UPDATE loans SET status='Paid' WHERE id=%s", (id,))
-        mysql.connection.commit()
+        db = get_db()
+        cursor = db.cursor()
+        cursor.execute("UPDATE loans SET status = 'Paid' WHERE id = ?", (id,))
+        db.commit()
+        db.close()
+        
         flash('Loan marked as paid!', 'success')
     except Exception as e:
         flash(f'Error updating loan: {str(e)}', 'error')
+    
     return redirect('/')
 
 # Mark loan as unpaid
 @app.route('/mark_unpaid/<int:id>')
 def mark_unpaid(id):
     try:
-        cursor = mysql.connection.cursor()
-        cursor.execute("UPDATE loans SET status='Unpaid' WHERE id=%s", (id,))
-        mysql.connection.commit()
+        db = get_db()
+        cursor = db.cursor()
+        cursor.execute("UPDATE loans SET status = 'Unpaid' WHERE id = ?", (id,))
+        db.commit()
+        db.close()
+        
         flash('Loan marked as unpaid!', 'success')
     except Exception as e:
         flash(f'Error updating loan: {str(e)}', 'error')
+    
     return redirect('/')
 
-# Delete loan
+# Delete a loan
 @app.route('/delete/<int:id>')
 def delete_loan(id):
     try:
-        cursor = mysql.connection.cursor()
-        cursor.execute("DELETE FROM loans WHERE id=%s", (id,))
-        mysql.connection.commit()
+        db = get_db()
+        cursor = db.cursor()
+        cursor.execute("DELETE FROM loans WHERE id = ?", (id,))
+        db.commit()
+        db.close()
+        
         flash('Loan deleted successfully!', 'success')
     except Exception as e:
         flash(f'Error deleting loan: {str(e)}', 'error')
+    
     return redirect('/')
 
 # Edit loan page
 @app.route('/edit/<int:id>')
 def edit_loan(id):
     try:
-        cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
-        cursor.execute("SELECT * FROM loans WHERE id=%s", (id,))
+        db = get_db()
+        cursor = db.cursor()
+        cursor.execute("SELECT * FROM loans WHERE id = ?", (id,))
         loan = cursor.fetchone()
+        db.close()
+        
         if loan:
             return render_template('edit.html', loan=loan)
         else:
@@ -169,12 +190,15 @@ def update_loan(id):
             flash('Name and amount are required!', 'error')
             return redirect(f'/edit/{id}')
         
-        cursor = mysql.connection.cursor()
+        db = get_db()
+        cursor = db.cursor()
         cursor.execute("""
-            UPDATE loans SET name=%s, description=%s, date=%s, amount=%s, status=%s 
-            WHERE id=%s
+            UPDATE loans 
+            SET name = ?, description = ?, date = ?, amount = ?, status = ?
+            WHERE id = ?
         """, (name, description, date, amount, status, id))
-        mysql.connection.commit()
+        db.commit()
+        db.close()
         
         flash('Loan updated successfully!', 'success')
         return redirect('/')
@@ -185,28 +209,29 @@ def update_loan(id):
 # Search loans
 @app.route('/search')
 def search_loans():
-    query = request.args.get('q', '')
-    status_filter = request.args.get('status', '')
-    
     try:
-        cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+        query = request.args.get('query', '')
+        status_filter = request.args.get('status', '')
+        
+        db = get_db()
+        cursor = db.cursor()
         
         if query and status_filter:
             cursor.execute("""
                 SELECT * FROM loans 
-                WHERE (name LIKE %s OR description LIKE %s) AND status = %s 
+                WHERE (name LIKE ? OR description LIKE ?) AND status = ?
                 ORDER BY created_at DESC
             """, (f'%{query}%', f'%{query}%', status_filter))
         elif query:
             cursor.execute("""
                 SELECT * FROM loans 
-                WHERE name LIKE %s OR description LIKE %s 
+                WHERE name LIKE ? OR description LIKE ?
                 ORDER BY created_at DESC
             """, (f'%{query}%', f'%{query}%'))
         elif status_filter:
             cursor.execute("""
                 SELECT * FROM loans 
-                WHERE status = %s 
+                WHERE status = ?
                 ORDER BY created_at DESC
             """, (status_filter,))
         else:
@@ -222,6 +247,8 @@ def search_loans():
         paid_amount = sum(float(loan['amount']) for loan in loans if loan['status'] == 'Paid')
         unpaid_amount = total_amount - paid_amount
         
+        db.close()
+        
         return render_template('search.html', 
                              loans=loans, 
                              query=query,
@@ -233,10 +260,12 @@ def search_loans():
                              paid_amount=paid_amount,
                              unpaid_amount=unpaid_amount)
     except Exception as e:
-        flash(f'Search error: {str(e)}', 'error')
-        return redirect('/')
+        flash(f'Database error: {str(e)}', 'error')
+        return render_template('search.html', loans=[], 
+                             query='', status_filter='',
+                             total_loans=0, paid_loans=0, unpaid_loans=0,
+                             total_amount=0, paid_amount=0, unpaid_amount=0)
 
-if __name__ == "__main__":
-    with app.app_context():
-        init_db()
-    app.run(host='0.0.0.0', port=8080, debug=True) 
+if __name__ == '__main__':
+    init_db()
+    app.run(debug=True) 

@@ -317,17 +317,23 @@ You can deploy this Flask app for free using [Render](https://render.com/):
 1. **Push your code to GitHub** (if not already).
 2. **Sign up at [Render](https://render.com/)** and click 'New Web Service'.
 3. **Connect your GitHub repo** and select this project.
-4. **Set the build and start commands:**
-   - Build command: `pip install -r requirements.txt`
-   - Start command: `gunicorn main:app`
-5. **Make sure you have a `Procfile` in your project root** with this content:
-   ```
-   web: gunicorn main:app
-   ```
-6. **Click 'Create Web Service'** and wait for deployment.
-7. **Access your app via the public URL Render provides!**
+4. **Set the configuration:**
+   - **Root Directory**: Leave empty (delete any value if present)
+   - **Build Command**: `pip install -r requirements.txt`
+   - **Start Command**: `gunicorn main:app`
+5. **Click 'Create Web Service'** and wait for deployment.
+6. **Access your app via the public URL Render provides!**
 
 ### Notes
-- All currency is now displayed in Philippine Peso (₱) format.
-- No authentication is required; the app is ready for public use.
-- If you need to update the app, just push changes to GitHub and Render will redeploy automatically.
+- ✅ **SQLite Database**: The app now uses SQLite instead of MySQL, making deployment much easier.
+- ✅ **Philippine Peso**: All currency is displayed in PHP (₱) format.
+- ✅ **No Authentication**: The app is ready for public use without login requirements.
+- ✅ **Dynamic Features**: Full CRUD operations (Create, Read, Update, Delete) for loans.
+- ✅ **Free Hosting**: Render provides free hosting for small applications.
+
+### Database
+- The app automatically creates a `loan_billing.db` SQLite file when first run.
+- No external database setup required - everything is self-contained.
+
+### If you need to update the app:
+- Just push changes to GitHub and Render will automatically redeploy.
