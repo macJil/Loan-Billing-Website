@@ -11,6 +11,7 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     // Form validation
+    /*
     const forms = document.querySelectorAll('form');
     forms.forEach(form => {
         form.addEventListener('submit', function(e) {
@@ -32,6 +33,7 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
     });
+    */
 
     // Amount field formatting
     const amountFields = document.querySelectorAll('input[name="amount"]');
