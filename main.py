@@ -89,7 +89,7 @@ def add_loan():
         name = request.form['name']
         description = request.form['description']
         date = request.form['date']
-        amount = request.form['amount']
+        amount = float(request.form['amount'])  # Ensure amount is float
         status = request.form['status']
         print(f"[DEBUG] Form data: name={name}, amount={amount}, date={date}, status={status}")
         
