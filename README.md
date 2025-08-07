@@ -309,3 +309,25 @@ pip install mysqlclient --only-binary=all
 **Built with ❤️ using Flask & MySQL**
 
 For support or questions, please open an issue on GitHub.
+
+## 🚀 Deploying Online for Free (Render.com)
+
+You can deploy this Flask app for free using [Render](https://render.com/):
+
+1. **Push your code to GitHub** (if not already).
+2. **Sign up at [Render](https://render.com/)** and click 'New Web Service'.
+3. **Connect your GitHub repo** and select this project.
+4. **Set the build and start commands:**
+   - Build command: `pip install -r requirements.txt`
+   - Start command: `gunicorn main:app`
+5. **Make sure you have a `Procfile` in your project root** with this content:
+   ```
+   web: gunicorn main:app
+   ```
+6. **Click 'Create Web Service'** and wait for deployment.
+7. **Access your app via the public URL Render provides!**
+
+### Notes
+- All currency is now displayed in Philippine Peso (₱) format.
+- No authentication is required; the app is ready for public use.
+- If you need to update the app, just push changes to GitHub and Render will redeploy automatically.

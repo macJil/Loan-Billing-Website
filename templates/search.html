@@ -103,7 +103,7 @@
                 <div class="card text-white bg-info">
                     <div class="card-body">
                         <h5 class="card-title">Total Amount</h5>
-                        <h2 class="card-text">${{ "%.2f"|format(total_amount) }}</h2>
+                        <h2 class="card-text">₱{{ "%.2f"|format(total_amount) }}</h2>
                     </div>
                 </div>
             </div>
@@ -154,7 +154,7 @@
                                 </td>
                                 <td>{{ loan.date }}</td>
                                 <td>
-                                    <span class="fw-bold text-primary">${{ "%.2f"|format(loan.amount) }}</span>
+                                    <span class="fw-bold text-primary">₱{{ "%.2f"|format(loan.amount) }}</span>
                                 </td>
                                 <td>
                                     {% if loan.status == 'Paid' %}
@@ -217,8 +217,8 @@
                 <div class="card bg-light">
                     <div class="card-body">
                         <h6 class="card-title">Search Summary</h6>
-                        <p class="mb-1">Total Paid: <span class="fw-bold text-success">${{ "%.2f"|format(paid_amount) }}</span></p>
-                        <p class="mb-0">Total Unpaid: <span class="fw-bold text-warning">${{ "%.2f"|format(unpaid_amount) }}</span></p>
+                        <p class="mb-1">Total Paid: <span class="fw-bold text-success">₱{{ "%.2f"|format(paid_amount) }}</span></p>
+                        <p class="mb-0">Total Unpaid: <span class="fw-bold text-warning">₱{{ "%.2f"|format(unpaid_amount) }}</span></p>
                     </div>
                 </div>
             </div>
