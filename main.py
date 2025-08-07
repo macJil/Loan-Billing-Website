@@ -91,6 +91,7 @@ def index():
 def add_loan():
     try:
         print("[DEBUG] Received POST to /add")
+        print(f"[DEBUG] Raw amount from form: {request.form['amount']}")
         name = request.form['name']
         description = request.form['description']
         date = request.form['date']
