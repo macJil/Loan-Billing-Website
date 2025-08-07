@@ -55,6 +55,7 @@ def index():
         cursor = db.cursor()
         cursor.execute("SELECT * FROM loans ORDER BY created_at DESC")
         loans = cursor.fetchall()
+        print("[DEBUG] Loan amounts in dashboard:", [loan['amount'] for loan in loans])
         
         # Calculate summary statistics
         total_loans = len(loans)
