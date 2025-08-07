@@ -84,14 +84,17 @@ def index():
 @app.route('/add', methods=['POST'])
 def add_loan():
     try:
+        print("[DEBUG] Received POST to /add")
         name = request.form['name']
         description = request.form['description']
         date = request.form['date']
         amount = request.form['amount']
         status = request.form['status']
+        print(f"[DEBUG] Form data: name={name}, amount={amount}, date={date}, status={status}")
         
         if not name or not amount:
             flash('Name and amount are required!', 'error')
+            print("[DEBUG] Validation failed: missing name or amount")
             return redirect('/')
         
         db = get_db()
@@ -102,10 +105,12 @@ def add_loan():
         """, (name, description, date, amount, status))
         db.commit()
         db.close()
+        print("[DEBUG] Loan added successfully")
         
         flash('Loan added successfully!', 'success')
         return redirect('/')
     except Exception as e:
+        print(f"[DEBUG] Error adding loan: {e}")
         flash(f'Error adding loan: {str(e)}', 'error')
         return redirect('/')
 
@@ -271,4 +276,9 @@ if __name__ == '__main__':
 
 # Always initialize the database, even when run by Gunicorn
 with app.app_context():
-    init_db() 
+    init_db()
+    db = get_db()
+    cursor = db.cursor()
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
+    print("[DEBUG] Tables in database:", cursor.fetchall())
+    db.close() 
