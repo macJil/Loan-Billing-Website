@@ -1,63 +1,16 @@
 from flask import Flask, render_template, request, redirect, url_for, flash, session
-import psycopg2
-from psycopg2.extras import RealDictCursor
 from datetime import datetime
 import os
+from github_db import github_db
 
 app = Flask(__name__)
 app.secret_key = 'your-secret-key-here'
-
-# Railway PostgreSQL Configuration
-# Railway automatically provides these environment variables
-app.config['DATABASE_URL'] = os.environ.get('DATABASE_URL')
-
-def get_db():
-    return psycopg2.connect(
-        app.config['DATABASE_URL'],
-        cursor_factory=RealDictCursor
-    )
-
-# Initialize database tables
-def init_db():
-    db = get_db()
-    cursor = db.cursor()
-    
-    # Create loans table
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS loans (
-            id SERIAL PRIMARY KEY,
-            name VARCHAR(100) NOT NULL,
-            description TEXT,
-            date DATE NOT NULL,
-            amount DECIMAL(10,2) NOT NULL,
-            status VARCHAR(10) DEFAULT 'Unpaid',
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    """)
-    
-    # Create users table for future authentication
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS users (
-            id SERIAL PRIMARY KEY,
-            username VARCHAR(50) UNIQUE NOT NULL,
-            password VARCHAR(255) NOT NULL,
-            email VARCHAR(100),
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    """)
-    
-    db.commit()
-    db.close()
 
 # Home page: list all loans
 @app.route('/')
 def index():
     try:
-        db = get_db()
-        cursor = db.cursor()
-        cursor.execute("SELECT * FROM loans ORDER BY created_at DESC")
-        loans = cursor.fetchall()
+        loans = github_db.get_all_loans()
         
         # Calculate summary statistics
         total_loans = len(loans)
@@ -66,8 +19,6 @@ def index():
         total_amount = sum(float(loan['amount']) for loan in loans)
         paid_amount = sum(float(loan['amount']) for loan in loans if loan['status'] == 'Paid')
         unpaid_amount = total_amount - paid_amount
-        
-        db.close()
         
         return render_template('index.html', 
                              loans=loans, 
@@ -101,17 +52,23 @@ def add_loan():
             print("[DEBUG] Validation failed: missing name or amount")
             return redirect('/')
         
-        db = get_db()
-        cursor = db.cursor()
-        cursor.execute("""
-            INSERT INTO loans (name, description, date, amount, status) 
-            VALUES (%s, %s, %s, %s, %s)
-        """, (name, description, date, amount, status))
-        db.commit()
-        db.close()
-        print("[DEBUG] Loan added successfully")
-
-        flash('Loan added successfully!', 'success')
+        loan_data = {
+            'name': name,
+            'description': description,
+            'date': date,
+            'amount': amount,
+            'status': status
+        }
+        
+        success, new_id = github_db.add_loan(loan_data)
+        
+        if success:
+            print("[DEBUG] Loan added successfully")
+            flash('Loan added successfully!', 'success')
+        else:
+            print("[DEBUG] Failed to add loan")
+            flash('Failed to add loan. Please try again.', 'error')
+        
         return redirect('/')
     except Exception as e:
         print(f"[DEBUG] Error adding loan: {e}")
@@ -122,13 +79,16 @@ def add_loan():
 @app.route('/mark_paid/<int:id>')
 def mark_paid(id):
     try:
-        db = get_db()
-        cursor = db.cursor()
-        cursor.execute("UPDATE loans SET status = 'Paid' WHERE id = %s", (id,))
-        db.commit()
-        db.close()
-        
-        flash('Loan marked as paid!', 'success')
+        loan = github_db.get_loan_by_id(id)
+        if loan:
+            loan['status'] = 'Paid'
+            success = github_db.update_loan(id, loan)
+            if success:
+                flash('Loan marked as paid!', 'success')
+            else:
+                flash('Failed to update loan.', 'error')
+        else:
+            flash('Loan not found!', 'error')
     except Exception as e:
         flash(f'Error updating loan: {str(e)}', 'error')
     
@@ -138,13 +98,16 @@ def mark_paid(id):
 @app.route('/mark_unpaid/<int:id>')
 def mark_unpaid(id):
     try:
-        db = get_db()
-        cursor = db.cursor()
-        cursor.execute("UPDATE loans SET status = 'Unpaid' WHERE id = %s", (id,))
-        db.commit()
-        db.close()
-        
-        flash('Loan marked as unpaid!', 'success')
+        loan = github_db.get_loan_by_id(id)
+        if loan:
+            loan['status'] = 'Unpaid'
+            success = github_db.update_loan(id, loan)
+            if success:
+                flash('Loan marked as unpaid!', 'success')
+            else:
+                flash('Failed to update loan.', 'error')
+        else:
+            flash('Loan not found!', 'error')
     except Exception as e:
         flash(f'Error updating loan: {str(e)}', 'error')
     
@@ -154,13 +117,11 @@ def mark_unpaid(id):
 @app.route('/delete/<int:id>')
 def delete_loan(id):
     try:
-        db = get_db()
-        cursor = db.cursor()
-        cursor.execute("DELETE FROM loans WHERE id = %s", (id,))
-        db.commit()
-        db.close()
-        
-        flash('Loan deleted successfully!', 'success')
+        success = github_db.delete_loan(id)
+        if success:
+            flash('Loan deleted successfully!', 'success')
+        else:
+            flash('Failed to delete loan.', 'error')
     except Exception as e:
         flash(f'Error deleting loan: {str(e)}', 'error')
     
@@ -170,12 +131,7 @@ def delete_loan(id):
 @app.route('/edit/<int:id>')
 def edit_loan(id):
     try:
-        db = get_db()
-        cursor = db.cursor()
-        cursor.execute("SELECT * FROM loans WHERE id = %s", (id,))
-        loan = cursor.fetchone()
-        db.close()
-        
+        loan = github_db.get_loan_by_id(id)
         if loan:
             return render_template('edit.html', loan=loan)
         else:
@@ -199,17 +155,21 @@ def update_loan(id):
             flash('Name and amount are required!', 'error')
             return redirect(f'/edit/{id}')
         
-        db = get_db()
-        cursor = db.cursor()
-        cursor.execute("""
-            UPDATE loans 
-            SET name = %s, description = %s, date = %s, amount = %s, status = %s
-            WHERE id = %s
-        """, (name, description, date, amount, status, id))
-        db.commit()
-        db.close()
+        loan_data = {
+            'name': name,
+            'description': description,
+            'date': date,
+            'amount': amount,
+            'status': status
+        }
         
-        flash('Loan updated successfully!', 'success')
+        success = github_db.update_loan(id, loan_data)
+        
+        if success:
+            flash('Loan updated successfully!', 'success')
+        else:
+            flash('Failed to update loan.', 'error')
+        
         return redirect('/')
     except Exception as e:
         flash(f'Error updating loan: {str(e)}', 'error')
@@ -222,31 +182,7 @@ def search_loans():
         query = request.args.get('q', '')
         status_filter = request.args.get('status', '')
         
-        db = get_db()
-        cursor = db.cursor()
-        
-        if query and status_filter:
-            cursor.execute("""
-                SELECT * FROM loans 
-                WHERE (name ILIKE %s OR description ILIKE %s) AND status = %s
-                ORDER BY created_at DESC
-            """, (f'%{query}%', f'%{query}%', status_filter))
-        elif query:
-            cursor.execute("""
-                SELECT * FROM loans 
-                WHERE name ILIKE %s OR description ILIKE %s
-                ORDER BY created_at DESC
-            """, (f'%{query}%', f'%{query}%'))
-        elif status_filter:
-            cursor.execute("""
-                SELECT * FROM loans 
-                WHERE status = %s
-                ORDER BY created_at DESC
-            """, (status_filter,))
-        else:
-            cursor.execute("SELECT * FROM loans ORDER BY created_at DESC")
-        
-        loans = cursor.fetchall()
+        loans = github_db.search_loans(query, status_filter)
         
         # Calculate summary statistics
         total_loans = len(loans)
@@ -255,8 +191,6 @@ def search_loans():
         total_amount = sum(float(loan['amount']) for loan in loans)
         paid_amount = sum(float(loan['amount']) for loan in loans if loan['status'] == 'Paid')
         unpaid_amount = total_amount - paid_amount
-        
-        db.close()
         
         return render_template('search.html', 
                              loans=loans, 
@@ -276,13 +210,4 @@ def search_loans():
                              total_amount=0, paid_amount=0, unpaid_amount=0)
 
 if __name__ == '__main__':
-    app.run(debug=True)
-
-# Always initialize the database, even when run by Gunicorn
-with app.app_context():
-    init_db()
-    db = get_db()
-    cursor = db.cursor()
-    cursor.execute("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'")
-    print("[DEBUG] Tables in database:", cursor.fetchall())
-    db.close() 
+    app.run(debug=True) 
