@@ -1,27 +1,20 @@
 from flask import Flask, render_template, request, redirect, url_for, flash, session
-import pymysql
+import psycopg2
+from psycopg2.extras import RealDictCursor
 from datetime import datetime
 import os
 
 app = Flask(__name__)
 app.secret_key = 'your-secret-key-here'
 
-# PlanetScale MySQL Configuration
-# Replace with your actual PlanetScale connection details
-app.config['MYSQL_HOST'] = os.environ.get('MYSQL_HOST', 'aws.connect.psdb.cloud')
-app.config['MYSQL_USER'] = os.environ.get('MYSQL_USER', 'your_username')
-app.config['MYSQL_PASSWORD'] = os.environ.get('MYSQL_PASSWORD', 'your_password')
-app.config['MYSQL_DB'] = os.environ.get('MYSQL_DB', 'loan_billing_db')
-app.config['MYSQL_SSL_MODE'] = 'VERIFY_IDENTITY'
+# Railway PostgreSQL Configuration
+# Railway automatically provides these environment variables
+app.config['DATABASE_URL'] = os.environ.get('DATABASE_URL')
 
 def get_db():
-    return pymysql.connect(
-        host=app.config['MYSQL_HOST'],
-        user=app.config['MYSQL_USER'],
-        password=app.config['MYSQL_PASSWORD'],
-        database=app.config['MYSQL_DB'],
-        ssl={'ssl': {'ssl-mode': 'preferred'}},
-        cursorclass=pymysql.cursors.DictCursor
+    return psycopg2.connect(
+        app.config['DATABASE_URL'],
+        cursor_factory=RealDictCursor
     )
 
 # Initialize database tables
@@ -32,21 +25,21 @@ def init_db():
     # Create loans table
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS loans (
-            id INT AUTO_INCREMENT PRIMARY KEY,
+            id SERIAL PRIMARY KEY,
             name VARCHAR(100) NOT NULL,
             description TEXT,
             date DATE NOT NULL,
             amount DECIMAL(10,2) NOT NULL,
             status VARCHAR(10) DEFAULT 'Unpaid',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
     
     # Create users table for future authentication
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS users (
-            id INT AUTO_INCREMENT PRIMARY KEY,
+            id SERIAL PRIMARY KEY,
             username VARCHAR(50) UNIQUE NOT NULL,
             password VARCHAR(255) NOT NULL,
             email VARCHAR(100),
@@ -235,13 +228,13 @@ def search_loans():
         if query and status_filter:
             cursor.execute("""
                 SELECT * FROM loans 
-                WHERE (name LIKE %s OR description LIKE %s) AND status = %s
+                WHERE (name ILIKE %s OR description ILIKE %s) AND status = %s
                 ORDER BY created_at DESC
             """, (f'%{query}%', f'%{query}%', status_filter))
         elif query:
             cursor.execute("""
                 SELECT * FROM loans 
-                WHERE name LIKE %s OR description LIKE %s
+                WHERE name ILIKE %s OR description ILIKE %s
                 ORDER BY created_at DESC
             """, (f'%{query}%', f'%{query}%'))
         elif status_filter:
@@ -290,6 +283,6 @@ with app.app_context():
     init_db()
     db = get_db()
     cursor = db.cursor()
-    cursor.execute("SHOW TABLES")
+    cursor.execute("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'")
     print("[DEBUG] Tables in database:", cursor.fetchall())
     db.close() 
