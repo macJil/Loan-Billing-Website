@@ -1,18 +1,28 @@
 from flask import Flask, render_template, request, redirect, url_for, flash, session
-import sqlite3
+import pymysql
 from datetime import datetime
 import os
 
 app = Flask(__name__)
 app.secret_key = 'your-secret-key-here'
 
-# SQLite Configuration
-DATABASE = '/tmp/loan_billing.db'
+# PlanetScale MySQL Configuration
+# Replace with your actual PlanetScale connection details
+app.config['MYSQL_HOST'] = os.environ.get('MYSQL_HOST', 'aws.connect.psdb.cloud')
+app.config['MYSQL_USER'] = os.environ.get('MYSQL_USER', 'your_username')
+app.config['MYSQL_PASSWORD'] = os.environ.get('MYSQL_PASSWORD', 'your_password')
+app.config['MYSQL_DB'] = os.environ.get('MYSQL_DB', 'loan_billing_db')
+app.config['MYSQL_SSL_MODE'] = 'VERIFY_IDENTITY'
 
 def get_db():
-    db = sqlite3.connect(DATABASE)
-    db.row_factory = sqlite3.Row
-    return db
+    return pymysql.connect(
+        host=app.config['MYSQL_HOST'],
+        user=app.config['MYSQL_USER'],
+        password=app.config['MYSQL_PASSWORD'],
+        database=app.config['MYSQL_DB'],
+        ssl={'ssl': {'ssl-mode': 'preferred'}},
+        cursorclass=pymysql.cursors.DictCursor
+    )
 
 # Initialize database tables
 def init_db():
@@ -22,24 +32,24 @@ def init_db():
     # Create loans table
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS loans (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            name VARCHAR(100) NOT NULL,
             description TEXT,
-            date TEXT NOT NULL,
-            amount REAL NOT NULL,
-            status TEXT DEFAULT 'Unpaid',
+            date DATE NOT NULL,
+            amount DECIMAL(10,2) NOT NULL,
+            status VARCHAR(10) DEFAULT 'Unpaid',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
         )
     """)
     
     # Create users table for future authentication
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT UNIQUE NOT NULL,
-            password TEXT NOT NULL,
-            email TEXT,
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            username VARCHAR(50) UNIQUE NOT NULL,
+            password VARCHAR(255) NOT NULL,
+            email VARCHAR(100),
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
@@ -55,19 +65,13 @@ def index():
         cursor = db.cursor()
         cursor.execute("SELECT * FROM loans ORDER BY created_at DESC")
         loans = cursor.fetchall()
-        print("[DEBUG] Loan amounts in dashboard:", [loan['amount'] for loan in loans])
-        print("[DEBUG] Loan amount types:", [type(loan['amount']) for loan in loans])
+        
         # Calculate summary statistics
-        def safe_float(val):
-            try:
-                return float(val)
-            except Exception:
-                return 0.0
         total_loans = len(loans)
         paid_loans = len([loan for loan in loans if loan['status'] == 'Paid'])
         unpaid_loans = total_loans - paid_loans
-        total_amount = sum(safe_float(loan['amount']) for loan in loans)
-        paid_amount = sum(safe_float(loan['amount']) for loan in loans if loan['status'] == 'Paid')
+        total_amount = sum(float(loan['amount']) for loan in loans)
+        paid_amount = sum(float(loan['amount']) for loan in loans if loan['status'] == 'Paid')
         unpaid_amount = total_amount - paid_amount
         
         db.close()
@@ -95,10 +99,10 @@ def add_loan():
         name = request.form['name']
         description = request.form['description']
         date = request.form['date']
-        amount = float(request.form['amount'])  # Ensure amount is float
+        amount = float(request.form['amount'])
         status = request.form['status']
         print(f"[DEBUG] Form data: name={name}, amount={amount}, date={date}, status={status}")
-        
+
         if not name or not amount:
             flash('Name and amount are required!', 'error')
             print("[DEBUG] Validation failed: missing name or amount")
@@ -108,12 +112,12 @@ def add_loan():
         cursor = db.cursor()
         cursor.execute("""
             INSERT INTO loans (name, description, date, amount, status) 
-            VALUES (?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s)
         """, (name, description, date, amount, status))
         db.commit()
         db.close()
         print("[DEBUG] Loan added successfully")
-        
+
         flash('Loan added successfully!', 'success')
         return redirect('/')
     except Exception as e:
@@ -127,7 +131,7 @@ def mark_paid(id):
     try:
         db = get_db()
         cursor = db.cursor()
-        cursor.execute("UPDATE loans SET status = 'Paid' WHERE id = ?", (id,))
+        cursor.execute("UPDATE loans SET status = 'Paid' WHERE id = %s", (id,))
         db.commit()
         db.close()
         
@@ -143,7 +147,7 @@ def mark_unpaid(id):
     try:
         db = get_db()
         cursor = db.cursor()
-        cursor.execute("UPDATE loans SET status = 'Unpaid' WHERE id = ?", (id,))
+        cursor.execute("UPDATE loans SET status = 'Unpaid' WHERE id = %s", (id,))
         db.commit()
         db.close()
         
@@ -159,7 +163,7 @@ def delete_loan(id):
     try:
         db = get_db()
         cursor = db.cursor()
-        cursor.execute("DELETE FROM loans WHERE id = ?", (id,))
+        cursor.execute("DELETE FROM loans WHERE id = %s", (id,))
         db.commit()
         db.close()
         
@@ -175,7 +179,7 @@ def edit_loan(id):
     try:
         db = get_db()
         cursor = db.cursor()
-        cursor.execute("SELECT * FROM loans WHERE id = ?", (id,))
+        cursor.execute("SELECT * FROM loans WHERE id = %s", (id,))
         loan = cursor.fetchone()
         db.close()
         
@@ -195,7 +199,7 @@ def update_loan(id):
         name = request.form['name']
         description = request.form['description']
         date = request.form['date']
-        amount = request.form['amount']
+        amount = float(request.form['amount'])
         status = request.form['status']
         
         if not name or not amount:
@@ -206,8 +210,8 @@ def update_loan(id):
         cursor = db.cursor()
         cursor.execute("""
             UPDATE loans 
-            SET name = ?, description = ?, date = ?, amount = ?, status = ?
-            WHERE id = ?
+            SET name = %s, description = %s, date = %s, amount = %s, status = %s
+            WHERE id = %s
         """, (name, description, date, amount, status, id))
         db.commit()
         db.close()
@@ -222,7 +226,7 @@ def update_loan(id):
 @app.route('/search')
 def search_loans():
     try:
-        query = request.args.get('query', '')
+        query = request.args.get('q', '')
         status_filter = request.args.get('status', '')
         
         db = get_db()
@@ -231,19 +235,19 @@ def search_loans():
         if query and status_filter:
             cursor.execute("""
                 SELECT * FROM loans 
-                WHERE (name LIKE ? OR description LIKE ?) AND status = ?
+                WHERE (name LIKE %s OR description LIKE %s) AND status = %s
                 ORDER BY created_at DESC
             """, (f'%{query}%', f'%{query}%', status_filter))
         elif query:
             cursor.execute("""
                 SELECT * FROM loans 
-                WHERE name LIKE ? OR description LIKE ?
+                WHERE name LIKE %s OR description LIKE %s
                 ORDER BY created_at DESC
             """, (f'%{query}%', f'%{query}%'))
         elif status_filter:
             cursor.execute("""
                 SELECT * FROM loans 
-                WHERE status = ?
+                WHERE status = %s
                 ORDER BY created_at DESC
             """, (status_filter,))
         else:
@@ -286,6 +290,6 @@ with app.app_context():
     init_db()
     db = get_db()
     cursor = db.cursor()
-    cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
+    cursor.execute("SHOW TABLES")
     print("[DEBUG] Tables in database:", cursor.fetchall())
     db.close() 
